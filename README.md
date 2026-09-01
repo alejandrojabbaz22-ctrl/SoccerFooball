@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# כדורגל שבת ⚽
 
-## Getting Started
+אפליקציית web להרשמה למשחקי כדורגל 6 על 6 בימי שבת, ניהול שחקנים קבועים, וחלוקה אוטומטית מאוזנת ל-3 קבוצות.
 
-First, run the development server:
+## Stack
+- **Next.js** (App Router, TypeScript, Tailwind) — הפרונט
+- **Supabase** (Postgres + Realtime) — מסד הנתונים, בשכבה החינמית
+- **Vercel** — hosting, בשכבה החינמית
+- **GitHub** — ניהול קוד ודיפלוי אוטומטי
+
+אין login במערכת — כל אחד עם הקישור יכול להירשם ולנהל (כולל איפוס שבועי ועריכת שחקנים), בהתאם להחלטה שקבוצה קטנה של חברים סומכים אחד על השני.
+
+## הקמה מאפס
+
+### 1. Supabase
+1. היכנס ל-[supabase.com](https://supabase.com) וצור פרויקט חדש (חינמי).
+2. בתפריט **SQL Editor** הרץ את התוכן של [`supabase/schema.sql`](supabase/schema.sql) — זה יוצר את כל הטבלאות, ה-RLS וה-realtime.
+3. בתפריט **Project Settings → API** תמצא:
+   - `Project URL`
+   - `anon public` key
+
+### 2. משתני סביבה מקומיים
+העתק את `.env.local.example` לקובץ `.env.local` ומלא את הערכים מ-Supabase:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. הרצה מקומית
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+האתר יעלה על http://localhost:3000
 
-## Learn More
+### 4. דיפלוי ל-GitHub + Vercel
+1. `git init` (אם עוד לא), ואז צור repo חדש ב-GitHub ודחוף אליו את הקוד.
+2. ב-[vercel.com](https://vercel.com) → **New Project** → יבוא מה-repo.
+3. בהגדרות הפרויקט ב-Vercel, תחת **Environment Variables**, הוסף את אותם שני משתנים (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+4. Deploy — מכאן כל push ל-main יעלה אוטומטית.
 
-To learn more about Next.js, take a look at the following resources:
+כל השירותים (Supabase, Vercel, GitHub) חינמיים לחלוטין בהיקף שימוש כזה (סדר גודל של 20-25 משתמשים, פעם בשבוע).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## שימוש
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### הזנת שחקנים קבועים
+בעמוד **שחקנים קבועים** מוסיפים שם + 5 ציונים (הגנה, קישור, התקפה, כושר, ציון משוכלל, כל אחד 1-100).
 
-## Deploy on Vercel
+### הרשמה שבועית
+בעמוד הראשי:
+- שחקן קבוע בוחר את שמו מרשימה — הציונים שלו נטענים אוטומטית.
+- אורח מזין שם ידנית ובוחר ציון משוכלל (50/60/70/80/90/100).
+- 18 הראשונים נכנסים לרשימה הסופית, השאר לרשימת המתנה. אם מישהו מוסר את עצמו מהרשימה הסופית, הראשון בהמתנה עולה אוטומטית במקומו.
+- כפתור **איפוס שבועי** מנקה את כל הרשימה (להפעיל כל יום ראשון לקראת השבת הבאה).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### יאללה בלגן
+כשיש בדיוק 18 רשומים מאושרים, כפתור "יאללה בלגן" מחלק אותם ל-3 קבוצות מאוזנות (אלגוריתם draft + שיפור מקומי שמאזן הגנה/קישור/התקפה/כושר/ציון משוכלל בין הקבוצות). התוצאה נשמרת (נשארת גם אחרי רענון) ויש כפתור להעתקת הרכב הקבוצות כטקסט מוכן להדבקה בוואטסאפ.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## מבנה הפרויקט
+```
+src/
+  app/
+    page.tsx          עמוד הרשמה ראשי + יאללה בלגן
+    players/page.tsx  ניהול שחקנים קבועים
+  components/
+    NavBar.tsx
+  lib/
+    supabase.ts        לקוח Supabase
+    types.ts            טיפוסים
+    queries.ts           פעולות מול Supabase
+    teamBalancer.ts    אלגוריתם חלוקת קבוצות
+supabase/
+  schema.sql           סכימת מסד הנתונים
+```
