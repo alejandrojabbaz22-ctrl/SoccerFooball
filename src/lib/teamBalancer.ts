@@ -59,7 +59,7 @@ function totalVariance(teams: DraftedPlayer[][]): number {
 export function buildBalancedTeams(
   players: Registration[],
   teamCount = 3,
-  teamNames = ["קבוצה אדומה", "קבוצה כחולה", "קבוצה ירוקה"]
+  teamNames = ["קבוצה כתומה", "קבוצה סגולה", "קבוצה צהובה"]
 ): Team[] {
   const sorted = [...players].sort((a, b) => b.overall_score - a.overall_score);
   const teams: DraftedPlayer[][] = Array.from({ length: teamCount }, () => []);

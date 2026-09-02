@@ -14,7 +14,7 @@ export default function NavBar() {
   return (
     <header className="border-b border-slate-800 bg-slate-900">
       <nav className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-        <span className="text-lg font-bold">⚽ כדורגל שבת</span>
+        <span className="text-lg font-bold">כדורגל שבת גולבול 19-21</span>
         <div className="flex gap-2">
           {links.map((link) => (
             <Link

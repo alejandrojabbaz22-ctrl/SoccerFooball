@@ -301,7 +301,7 @@ export default function HomePage() {
                   key={team.name}
                   className="rounded-md border border-slate-700 bg-slate-950 p-3"
                 >
-                  <h3 className="mb-2 font-bold text-emerald-400">{team.name}</h3>
+                  <h3 className={`mb-2 font-bold ${teamColor(team.name)}`}>{team.name}</h3>
                   <ul className="mb-2 flex flex-col gap-1 text-sm">
                     {team.players.map((p) => (
                       <li key={p.id}>{p.player_name}</li>
@@ -324,6 +324,13 @@ export default function HomePage() {
       </section>
     </div>
   );
+}
+
+function teamColor(teamName: string) {
+  if (teamName.includes("כתומה")) return "text-orange-400";
+  if (teamName.includes("סגולה")) return "text-purple-400";
+  if (teamName.includes("צהובה")) return "text-yellow-300";
+  return "text-emerald-400";
 }
 
 function PlayerList({

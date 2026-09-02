@@ -3,7 +3,7 @@ import "./globals.css";
 import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
-  title: "כדורגל שבת",
+  title: "כדורגל שבת גולבול 19-21",
   description: "הרשמה וחלוקת קבוצות לכדורגל של יום שבת",
 };
 

@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FixedPlayer } from "@/lib/types";
 import { toErrorMessage } from "@/lib/errors";
+import PasswordGate from "@/components/PasswordGate";
+
+const PLAYERS_PAGE_PASSWORD = "gueta123";
 
 type FormState = {
   id: string | null;
@@ -25,7 +28,15 @@ const emptyForm: FormState = {
   overall_score: 50,
 };
 
-export default function PlayersPage() {
+export default function PlayersPageGate() {
+  return (
+    <PasswordGate password={PLAYERS_PAGE_PASSWORD} storageKey="players-page-unlocked">
+      <PlayersPage />
+    </PasswordGate>
+  );
+}
+
+function PlayersPage() {
   const [players, setPlayers] = useState<FixedPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
