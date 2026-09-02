@@ -16,7 +16,8 @@ import { FixedPlayer, MAX_CONFIRMED, MAX_SLOTS, Registration } from "@/lib/types
 import { buildBalancedTeams, Team } from "@/lib/teamBalancer";
 import { toErrorMessage } from "@/lib/errors";
 
-const GUEST_SCORES = [50, 60, 70, 80, 90, 100];
+const GUEST_SCORES = [50, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+const MIN_PLAYERS_FOR_TEAMS = 3;
 
 export default function HomePage() {
   const [fixedPlayers, setFixedPlayers] = useState<FixedPlayer[]>([]);
@@ -281,15 +282,19 @@ export default function HomePage() {
         <h2 className="mb-3 text-lg font-bold">חלוקה לקבוצות</h2>
         <button
           onClick={handleShuffle}
-          disabled={busy || confirmed.length !== MAX_CONFIRMED}
+          disabled={busy || confirmed.length < MIN_PLAYERS_FOR_TEAMS}
           className="w-full rounded-md bg-amber-500 py-3 text-base font-bold text-slate-950 disabled:opacity-40"
         >
           🎲 יאללה בלגן
         </button>
-        {confirmed.length !== MAX_CONFIRMED && (
+        {confirmed.length < MIN_PLAYERS_FOR_TEAMS ? (
           <p className="mt-2 text-xs text-slate-400">
-            צריך בדיוק {MAX_CONFIRMED} שחקנים מאושרים כדי לחלק לקבוצות (יש כרגע{" "}
+            צריך לפחות {MIN_PLAYERS_FOR_TEAMS} שחקנים מאושרים כדי לחלק לקבוצות (יש כרגע{" "}
             {confirmed.length}).
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-slate-400">
+            אפשר ללחוץ שוב כמה פעמים שרוצים כדי לקבל חלוקה אחרת, עדיין מאוזנת.
           </p>
         )}
 

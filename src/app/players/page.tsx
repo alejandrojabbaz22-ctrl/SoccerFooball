@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { FixedPlayer } from "@/lib/types";
 import { toErrorMessage } from "@/lib/errors";
@@ -28,6 +28,18 @@ const emptyForm: FormState = {
   overall_score: 50,
 };
 
+type SortKey = "name" | "defense" | "passing" | "attack" | "fitness" | "overall_score";
+type SortConfig = { key: SortKey; direction: "asc" | "desc" };
+
+const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: "name", label: "שם" },
+  { key: "defense", label: "הגנה" },
+  { key: "passing", label: "קישור" },
+  { key: "attack", label: "התקפה" },
+  { key: "fitness", label: "כושר" },
+  { key: "overall_score", label: "ציון" },
+];
+
 export default function PlayersPageGate() {
   return (
     <PasswordGate password={PLAYERS_PAGE_PASSWORD} storageKey="players-page-unlocked">
@@ -42,6 +54,25 @@ function PlayersPage() {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: "name", direction: "asc" });
+
+  function handleSort(key: SortKey) {
+    setSortConfig((prev) => {
+      if (prev.key !== key) return { key, direction: key === "name" ? "asc" : "desc" };
+      return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+    });
+  }
+
+  const sortedPlayers = useMemo(() => {
+    const list = [...players];
+    const { key, direction } = sortConfig;
+    list.sort((a, b) => {
+      const diff =
+        key === "name" ? a.name.localeCompare(b.name, "he") : a[key] - b[key];
+      return direction === "asc" ? diff : -diff;
+    });
+    return list;
+  }, [players, sortConfig]);
 
   async function load() {
     try {
@@ -200,17 +231,25 @@ function PlayersPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-slate-400">
-                  <th className="p-2 text-start">שם</th>
-                  <th className="p-2">הגנה</th>
-                  <th className="p-2">קישור</th>
-                  <th className="p-2">התקפה</th>
-                  <th className="p-2">כושר</th>
-                  <th className="p-2">ציון</th>
+                  {COLUMNS.map((col) => (
+                    <th
+                      key={col.key}
+                      onClick={() => handleSort(col.key)}
+                      className={`cursor-pointer select-none p-2 hover:text-slate-200 ${
+                        col.key === "name" ? "text-start" : ""
+                      }`}
+                    >
+                      {col.label}
+                      {sortConfig.key === col.key && (
+                        <span className="ms-1">{sortConfig.direction === "asc" ? "▲" : "▼"}</span>
+                      )}
+                    </th>
+                  ))}
                   <th className="p-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {players.map((p) => (
+                {sortedPlayers.map((p) => (
                   <tr key={p.id} className="border-t border-slate-800">
                     <td className="p-2 font-medium">{p.name}</td>
                     <td className="p-2 text-center">{p.defense}</td>
