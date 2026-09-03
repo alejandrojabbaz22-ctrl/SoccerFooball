@@ -101,6 +101,13 @@ export async function resetRegistrations() {
     .delete()
     .not("id", "is", null);
   if (error) throw error;
+
+  // Clear the last team draw too, so a fresh week doesn't show last week's teams.
+  const { error: teamDrawError } = await supabase
+    .from("team_draws")
+    .delete()
+    .not("id", "is", null);
+  if (teamDrawError) throw teamDrawError;
 }
 
 export async function saveTeamDraw(teams: unknown) {
