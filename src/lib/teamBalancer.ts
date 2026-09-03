@@ -46,25 +46,40 @@ const WEAKEST_TIER = 6;
 const STRONGEST_TIER = 1;
 const TIER_PENALTY_WEIGHT = 5000;
 const SPREAD_PENALTY_WEIGHT = 200;
+// This specific player should never share a team with another tier-1 player.
+const NEVER_PAIR_WITH_TIER1 = "חי";
 
 // Soft preferences layered on top of the stat balance:
 // - at most one tier-6 (weakest) player per team, so the weakest players are spread out
 // - tier-1 (strongest) players get clustered together (up to 2 per team) instead of
 //   spread one-per-team, per the user's request
+// - NEVER_PAIR_WITH_TIER1 is the exception: he never teams up with another tier-1 player
 function tierPenalty(teams: DraftedPlayer[][]): number {
   let penalty = 0;
+
   for (const team of teams) {
     const weakestCount = team.filter((p) => p.pick_tier === WEAKEST_TIER).length;
     if (weakestCount > 1) penalty += (weakestCount - 1) ** 2 * TIER_PENALTY_WEIGHT;
 
-    const strongestCount = team.filter((p) => p.pick_tier === STRONGEST_TIER).length;
-    if (strongestCount > 2) penalty += (strongestCount - 2) ** 2 * TIER_PENALTY_WEIGHT;
+    const hasIsolatedPlayer = team.some((p) => p.player_name === NEVER_PAIR_WITH_TIER1);
+    const otherStrongestCount = team.filter(
+      (p) => p.pick_tier === STRONGEST_TIER && p.player_name !== NEVER_PAIR_WITH_TIER1
+    ).length;
+
+    if (hasIsolatedPlayer) {
+      // Any other tier-1 teammate at all is a violation here.
+      penalty += otherStrongestCount * TIER_PENALTY_WEIGHT;
+    } else if (otherStrongestCount > 2) {
+      penalty += (otherStrongestCount - 2) ** 2 * TIER_PENALTY_WEIGHT;
+    }
   }
 
-  // Nudge towards grouping strongest players into pairs rather than spreading them singly.
-  const teamsWithOneStrongest = teams.filter(
-    (team) => team.filter((p) => p.pick_tier === STRONGEST_TIER).length === 1
-  ).length;
+  // Nudge towards grouping the remaining strongest players into pairs rather than
+  // spreading them singly (excluding NEVER_PAIR_WITH_TIER1's team, which should stay solo).
+  const teamsWithOneStrongest = teams.filter((team) => {
+    if (team.some((p) => p.player_name === NEVER_PAIR_WITH_TIER1)) return false;
+    return team.filter((p) => p.pick_tier === STRONGEST_TIER).length === 1;
+  }).length;
   penalty += teamsWithOneStrongest * SPREAD_PENALTY_WEIGHT;
 
   return penalty;
