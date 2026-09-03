@@ -16,6 +16,7 @@ type FormState = {
   attack: number;
   fitness: number;
   overall_score: number;
+  pick_tier: number;
 };
 
 const emptyForm: FormState = {
@@ -26,9 +27,17 @@ const emptyForm: FormState = {
   attack: 50,
   fitness: 50,
   overall_score: 50,
+  pick_tier: 3,
 };
 
-type SortKey = "name" | "defense" | "passing" | "attack" | "fitness" | "overall_score";
+type SortKey =
+  | "name"
+  | "defense"
+  | "passing"
+  | "attack"
+  | "fitness"
+  | "overall_score"
+  | "pick_tier";
 type SortConfig = { key: SortKey; direction: "asc" | "desc" };
 
 const COLUMNS: { key: SortKey; label: string }[] = [
@@ -38,6 +47,7 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "attack", label: "התקפה" },
   { key: "fitness", label: "כושר" },
   { key: "overall_score", label: "ציון" },
+  { key: "pick_tier", label: "בחירה" },
 ];
 
 export default function PlayersPageGate() {
@@ -68,7 +78,9 @@ function PlayersPage() {
     const { key, direction } = sortConfig;
     list.sort((a, b) => {
       const diff =
-        key === "name" ? a.name.localeCompare(b.name, "he") : a[key] - b[key];
+        key === "name"
+          ? a.name.localeCompare(b.name, "he")
+          : (a[key] ?? 99) - (b[key] ?? 99);
       return direction === "asc" ? diff : -diff;
     });
     return list;
@@ -102,6 +114,7 @@ function PlayersPage() {
       attack: p.attack,
       fitness: p.fitness,
       overall_score: p.overall_score,
+      pick_tier: p.pick_tier ?? 3,
     });
   }
 
@@ -120,6 +133,7 @@ function PlayersPage() {
         attack: form.attack,
         fitness: form.fitness,
         overall_score: form.overall_score,
+        pick_tier: form.pick_tier,
       };
       if (form.id) {
         const { error } = await supabase
@@ -202,6 +216,20 @@ function PlayersPage() {
             value={form.overall_score}
             onChange={(v) => setForm({ ...form, overall_score: v })}
           />
+          <label className="flex flex-col gap-1 text-xs text-slate-400">
+            בחירה (1=חזק, 6=חלש)
+            <select
+              value={form.pick_tier}
+              onChange={(e) => setForm({ ...form, pick_tier: Number(e.target.value) })}
+              className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-slate-100"
+            >
+              {[1, 2, 3, 4, 5, 6].map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="mt-3 flex gap-2">
           <button
@@ -257,6 +285,7 @@ function PlayersPage() {
                     <td className="p-2 text-center">{p.attack}</td>
                     <td className="p-2 text-center">{p.fitness}</td>
                     <td className="p-2 text-center font-bold">{p.overall_score}</td>
+                    <td className="p-2 text-center">{p.pick_tier ?? "-"}</td>
                     <td className="p-2 text-end whitespace-nowrap">
                       <button
                         onClick={() => startEdit(p)}

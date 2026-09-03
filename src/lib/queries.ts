@@ -41,6 +41,7 @@ export async function registerFixedPlayer(player: FixedPlayer) {
     attack: player.attack,
     fitness: player.fitness,
     overall_score: player.overall_score,
+    pick_tier: player.pick_tier,
     status,
   });
   if (error) throw error;
@@ -59,6 +60,7 @@ export async function registerGuest(name: string, overallScore: number) {
     attack: overallScore,
     fitness: overallScore,
     overall_score: overallScore,
+    pick_tier: null,
     status,
   });
   if (error) throw error;

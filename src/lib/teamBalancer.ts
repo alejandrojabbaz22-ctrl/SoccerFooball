@@ -42,13 +42,42 @@ function statVariance(teams: DraftedPlayer[][], key: keyof PlayerStats): number 
   return averages.reduce((acc, avg) => acc + (avg - mean) ** 2, 0);
 }
 
+const WEAKEST_TIER = 6;
+const STRONGEST_TIER = 1;
+const TIER_PENALTY_WEIGHT = 5000;
+const SPREAD_PENALTY_WEIGHT = 200;
+
+// Soft preferences layered on top of the stat balance:
+// - at most one tier-6 (weakest) player per team, so the weakest players are spread out
+// - tier-1 (strongest) players get clustered together (up to 2 per team) instead of
+//   spread one-per-team, per the user's request
+function tierPenalty(teams: DraftedPlayer[][]): number {
+  let penalty = 0;
+  for (const team of teams) {
+    const weakestCount = team.filter((p) => p.pick_tier === WEAKEST_TIER).length;
+    if (weakestCount > 1) penalty += (weakestCount - 1) ** 2 * TIER_PENALTY_WEIGHT;
+
+    const strongestCount = team.filter((p) => p.pick_tier === STRONGEST_TIER).length;
+    if (strongestCount > 2) penalty += (strongestCount - 2) ** 2 * TIER_PENALTY_WEIGHT;
+  }
+
+  // Nudge towards grouping strongest players into pairs rather than spreading them singly.
+  const teamsWithOneStrongest = teams.filter(
+    (team) => team.filter((p) => p.pick_tier === STRONGEST_TIER).length === 1
+  ).length;
+  penalty += teamsWithOneStrongest * SPREAD_PENALTY_WEIGHT;
+
+  return penalty;
+}
+
 function totalVariance(teams: DraftedPlayer[][]): number {
   return (
     statVariance(teams, "overall_score") * 2 +
     statVariance(teams, "defense") +
     statVariance(teams, "passing") +
     statVariance(teams, "attack") +
-    statVariance(teams, "fitness")
+    statVariance(teams, "fitness") +
+    tierPenalty(teams)
   );
 }
 

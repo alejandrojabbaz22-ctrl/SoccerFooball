@@ -6,6 +6,8 @@ export type FixedPlayer = {
   attack: number;
   fitness: number;
   overall_score: number;
+  // Manual draft tier (1 = strongest, 6 = weakest), used to steer team balancing.
+  pick_tier: number | null;
   created_at: string;
 };
 
@@ -21,6 +23,7 @@ export type Registration = {
   attack: number;
   fitness: number;
   overall_score: number;
+  pick_tier: number | null;
   status: RegistrationStatus;
   created_at: string;
 };

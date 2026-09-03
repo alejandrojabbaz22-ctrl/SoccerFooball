@@ -11,6 +11,8 @@ create table if not exists fixed_players (
   attack int not null check (attack between 1 and 100),
   fitness int not null check (fitness between 1 and 100),
   overall_score int not null check (overall_score between 1 and 100),
+  -- Manual draft tier (1 = strongest, 6 = weakest), used to steer team balancing.
+  pick_tier int check (pick_tier between 1 and 6),
   created_at timestamptz not null default now()
 );
 
@@ -25,6 +27,7 @@ create table if not exists registrations (
   attack int not null check (attack between 1 and 100),
   fitness int not null check (fitness between 1 and 100),
   overall_score int not null check (overall_score between 1 and 100),
+  pick_tier int check (pick_tier between 1 and 6),
   status text not null default 'confirmed' check (status in ('confirmed', 'standby')),
   created_at timestamptz not null default now()
 );
