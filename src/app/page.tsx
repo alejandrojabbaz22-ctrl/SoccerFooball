@@ -18,6 +18,7 @@ import { toErrorMessage } from "@/lib/errors";
 
 const GUEST_SCORES = [50, 60, 65, 70, 75, 80, 85, 90, 95, 100];
 const MIN_PLAYERS_FOR_TEAMS = 3;
+const RESET_CODE = "gueta123";
 
 export default function HomePage() {
   const [fixedPlayers, setFixedPlayers] = useState<FixedPlayer[]>([]);
@@ -123,6 +124,12 @@ export default function HomePage() {
   }
 
   async function handleReset() {
+    const code = prompt('להזנת קוד איפוס שבועי:');
+    if (code === null) return; // cancelled
+    if (code !== RESET_CODE) {
+      setError("קוד שגוי");
+      return;
+    }
     if (!confirm("לאפס את כל רשימת ההרשמה לשבת הקרובה? הפעולה בלתי הפיכה.")) return;
     setBusy(true);
     setError(null);
