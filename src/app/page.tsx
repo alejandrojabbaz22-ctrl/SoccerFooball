@@ -34,6 +34,7 @@ export default function HomePage() {
   const [guestScore, setGuestScore] = useState(70);
   const [guestPosition, setGuestPosition] = useState(GUEST_POSITIONS[0]);
   const [guestInvitedBy, setGuestInvitedBy] = useState("");
+  const [pendingRemoval, setPendingRemoval] = useState<Registration | null>(null);
 
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -115,6 +116,7 @@ export default function HomePage() {
   }
 
   async function handleRemove(reg: Registration) {
+    setPendingRemoval(null);
     setBusy(true);
     setError(null);
     try {
@@ -184,6 +186,38 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col gap-8">
+      {pendingRemoval && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setPendingRemoval(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900 p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-4 text-base font-bold">
+              האם אתה בטוח רוצה להסיר את השחקן {pendingRemoval.player_name}?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRemove(pendingRemoval)}
+                className="flex-1 rounded-md bg-red-600 py-2 text-sm font-medium"
+              >
+                כן
+              </button>
+              <button
+                onClick={() => setPendingRemoval(null)}
+                className="flex-1 rounded-md bg-slate-700 py-2 text-sm font-medium"
+              >
+                לא
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-md bg-red-950 border border-red-800 px-4 py-2 text-red-200 text-sm">
           {error}
@@ -191,7 +225,9 @@ export default function HomePage() {
       )}
 
       <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
-        <h2 className="mb-3 text-lg font-bold">הרשמה למשחק הקרוב</h2>
+        <h2 className="mb-3 text-lg font-bold">
+          הרשמה למשחק הקרוב- ההרשמה נפתחת בימי ראשון בשעה 21:00
+        </h2>
 
         <div className="mb-3 flex gap-2">
           <button
@@ -294,7 +330,7 @@ export default function HomePage() {
             איפוס שבועי
           </button>
         </div>
-        <PlayerList items={confirmed} onRemove={handleRemove} busy={busy} />
+        <PlayerList items={confirmed} onRemove={setPendingRemoval} busy={busy} />
       </section>
 
       {standby.length > 0 && (
@@ -302,7 +338,7 @@ export default function HomePage() {
           <h2 className="mb-3 text-lg font-bold">
             רשימת המתנה ({standby.length}/{MAX_SLOTS - MAX_CONFIRMED})
           </h2>
-          <PlayerList items={standby} onRemove={handleRemove} busy={busy} standby />
+          <PlayerList items={standby} onRemove={setPendingRemoval} busy={busy} standby />
         </section>
       )}
 
