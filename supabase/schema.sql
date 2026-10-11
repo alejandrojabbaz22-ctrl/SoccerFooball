@@ -28,6 +28,8 @@ create table if not exists registrations (
   fitness int not null check (fitness between 1 and 100),
   overall_score int not null check (overall_score between 1 and 100),
   pick_tier int check (pick_tier between 1 and 6),
+  position text,
+  invited_by text,
   status text not null default 'confirmed' check (status in ('confirmed', 'standby')),
   created_at timestamptz not null default now()
 );

@@ -17,6 +17,7 @@ import { buildBalancedTeams, Team } from "@/lib/teamBalancer";
 import { toErrorMessage } from "@/lib/errors";
 
 const GUEST_SCORES = [50, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+const GUEST_POSITIONS = ["לא יודע", "הגנה", "קישור", "התקפה"];
 const MIN_PLAYERS_FOR_TEAMS = 3;
 const RESET_CODE = "gueta123";
 
@@ -31,6 +32,8 @@ export default function HomePage() {
   const [selectedFixedId, setSelectedFixedId] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestScore, setGuestScore] = useState(70);
+  const [guestPosition, setGuestPosition] = useState(GUEST_POSITIONS[0]);
+  const [guestInvitedBy, setGuestInvitedBy] = useState("");
 
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -99,8 +102,9 @@ export default function HomePage() {
         setSelectedFixedId("");
       } else {
         if (!guestName.trim()) throw new Error("הזן שם");
-        await registerGuest(guestName.trim(), guestScore);
+        await registerGuest(guestName.trim(), guestScore, guestPosition, guestInvitedBy.trim());
         setGuestName("");
+        setGuestInvitedBy("");
       }
       await loadAll();
     } catch (e) {
@@ -235,7 +239,7 @@ export default function HomePage() {
             <input
               value={guestName}
               onChange={(e) => setGuestName(e.target.value)}
-              placeholder="שם מלא"
+              placeholder="שם השחקן"
               className="flex-1 min-w-[140px] rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
             />
             <select
@@ -249,6 +253,23 @@ export default function HomePage() {
                 </option>
               ))}
             </select>
+            <select
+              value={guestPosition}
+              onChange={(e) => setGuestPosition(e.target.value)}
+              className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            >
+              {GUEST_POSITIONS.map((p) => (
+                <option key={p} value={p}>
+                  עמדה: {p}
+                </option>
+              ))}
+            </select>
+            <input
+              value={guestInvitedBy}
+              onChange={(e) => setGuestInvitedBy(e.target.value)}
+              placeholder="שחקן/אורח של..."
+              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            />
             <button
               onClick={handleRegister}
               disabled={busy || !guestName.trim()}
@@ -370,7 +391,11 @@ function PlayerList({
             {standby && <span className="text-slate-500 me-2">#{i + 1}</span>}
             {r.player_name}{" "}
             {!r.is_fixed && (
-              <span className="text-xs text-slate-500">(אורח, {r.overall_score})</span>
+              <span className="text-xs text-slate-500">
+                (אורח, {r.overall_score}
+                {r.position ? `, ${r.position}` : ""}
+                {r.invited_by ? `, של ${r.invited_by}` : ""})
+              </span>
             )}
           </span>
           <button

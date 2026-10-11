@@ -24,6 +24,9 @@ export type Registration = {
   fitness: number;
   overall_score: number;
   pick_tier: number | null;
+  // Guest-only: preferred position and who brought them.
+  position: string | null;
+  invited_by: string | null;
   status: RegistrationStatus;
   created_at: string;
 };

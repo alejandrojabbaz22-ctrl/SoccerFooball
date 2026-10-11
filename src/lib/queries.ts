@@ -47,7 +47,12 @@ export async function registerFixedPlayer(player: FixedPlayer) {
   if (error) throw error;
 }
 
-export async function registerGuest(name: string, overallScore: number) {
+export async function registerGuest(
+  name: string,
+  overallScore: number,
+  position: string,
+  invitedBy: string
+) {
   const confirmedCount = await countConfirmed();
   const status = confirmedCount < MAX_CONFIRMED ? "confirmed" : "standby";
 
@@ -61,6 +66,8 @@ export async function registerGuest(name: string, overallScore: number) {
     fitness: overallScore,
     overall_score: overallScore,
     pick_tier: null,
+    position,
+    invited_by: invitedBy || null,
     status,
   });
   if (error) throw error;
