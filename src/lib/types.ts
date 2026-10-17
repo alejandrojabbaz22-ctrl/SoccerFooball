@@ -41,3 +41,13 @@ export type PlayerStats = {
 
 export const MAX_CONFIRMED = 18;
 export const MAX_SLOTS = 25;
+
+// A "special request": 2-3 players who asked to be on the same team.
+export type SpecialRequest = {
+  id: string;
+  players: string[];
+  created_at: string;
+};
+
+export const MAX_SPECIAL_REQUESTS = 3;
+export const MAX_REQUEST_PLAYERS = 3;

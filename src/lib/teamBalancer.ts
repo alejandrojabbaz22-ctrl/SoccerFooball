@@ -85,14 +85,38 @@ function tierPenalty(teams: DraftedPlayer[][]): number {
   return penalty;
 }
 
-function totalVariance(teams: DraftedPlayer[][]): number {
+const REQUEST_PENALTY_WEIGHT = 150;
+
+// Each special request is a group of 2-3 player names that want to play together.
+// Costs one step per extra team the group is split across; names that are not
+// among this week's confirmed players are ignored.
+function requestPenalty(teams: DraftedPlayer[][], requests: string[][]): number {
+  let penalty = 0;
+  for (const group of requests) {
+    const teamsUsed = new Set<number>();
+    let present = 0;
+    teams.forEach((team, ti) => {
+      for (const p of team) {
+        if (group.includes(p.player_name)) {
+          present++;
+          teamsUsed.add(ti);
+        }
+      }
+    });
+    if (present >= 2) penalty += (teamsUsed.size - 1) * REQUEST_PENALTY_WEIGHT;
+  }
+  return penalty;
+}
+
+function totalVariance(teams: DraftedPlayer[][], requests: string[][]): number {
   return (
     statVariance(teams, "overall_score") * 2 +
     statVariance(teams, "defense") +
     statVariance(teams, "passing") +
     statVariance(teams, "attack") +
     statVariance(teams, "fitness") +
-    tierPenalty(teams)
+    tierPenalty(teams) +
+    requestPenalty(teams, requests)
   );
 }
 
@@ -123,20 +147,16 @@ function buildSlotOrder(sizes: number[]): number[] {
   return order;
 }
 
-/**
- * Splits players into `teamCount` teams, as evenly sized as possible, and
- * balanced across all five stats.
- * 1) Snake draft by overall_score (with a touch of random jitter, so
- *    re-running this produces a genuinely different lineup each time) to get
- *    a strong, varied starting point.
- * 2) Randomized local search that swaps players between teams whenever a
- *    swap lowers the combined variance across all five stats.
- */
-export function buildBalancedTeams(
+const RESTARTS = 8;
+const ITERATIONS_PER_RESTART = 3000;
+const START_TEMPERATURE = 40;
+const END_TEMPERATURE = 0.3;
+
+function searchOnce(
   players: Registration[],
-  teamCount = 3,
-  teamNames = ["קבוצה כתומה", "קבוצה סגולה", "קבוצה צהובה"]
-): Team[] {
+  teamCount: number,
+  requests: string[][]
+): { teams: DraftedPlayer[][]; cost: number } {
   const jitter = 6; // small enough to keep strong players near the top, large enough to reshuffle ties and near-ties
   const sorted = [...players].sort(
     (a, b) => b.overall_score + Math.random() * jitter - (a.overall_score + Math.random() * jitter)
@@ -147,10 +167,13 @@ export function buildBalancedTeams(
   const teams: DraftedPlayer[][] = Array.from({ length: teamCount }, () => []);
   sorted.forEach((player, i) => teams[slotOrder[i]].push(player));
 
-  // Local search improvement: try swapping pairs of players across teams.
-  let bestVariance = totalVariance(teams);
-  const iterations = 3000;
-  for (let i = 0; i < iterations; i++) {
+  // Simulated annealing over pairwise swaps: early on it may accept slightly
+  // worse swaps (to move a whole requested group), then it settles down.
+  let cost = totalVariance(teams, requests);
+  let bestCost = cost;
+  let bestTeams = teams.map((t) => [...t]);
+  for (let i = 0; i < ITERATIONS_PER_RESTART; i++) {
+    const temperature = START_TEMPERATURE * Math.pow(END_TEMPERATURE / START_TEMPERATURE, i / ITERATIONS_PER_RESTART);
     const teamA = Math.floor(Math.random() * teamCount);
     let teamB = Math.floor(Math.random() * teamCount);
     if (teamB === teamA) teamB = (teamB + 1) % teamCount;
@@ -163,17 +186,45 @@ export function buildBalancedTeams(
     teams[teamA][posA] = teams[teamB][posB];
     teams[teamB][posB] = tmp;
 
-    const newVariance = totalVariance(teams);
-    if (newVariance < bestVariance) {
-      bestVariance = newVariance;
+    const newCost = totalVariance(teams, requests);
+    const delta = newCost - cost;
+    if (delta < 0 || Math.random() < Math.exp(-delta / temperature)) {
+      cost = newCost;
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestTeams = teams.map((t) => [...t]);
+      }
     } else {
       // revert the swap
       teams[teamB][posB] = teams[teamA][posA];
       teams[teamA][posA] = tmp;
     }
   }
+  return { teams: bestTeams, cost: bestCost };
+}
 
-  return teams.map((players, i) => ({
+/**
+ * Splits players into `teamCount` teams, as evenly sized as possible, and
+ * balanced across all five stats, while honoring tier rules and special
+ * requests as soft preferences.
+ * Each restart snake-drafts by overall_score (with a touch of random jitter,
+ * so re-running produces a different lineup each time) and then improves it
+ * with randomized swaps. Single swaps cannot move a whole requested group at
+ * once, so several restarts are run and the cheapest result is kept.
+ */
+export function buildBalancedTeams(
+  players: Registration[],
+  teamCount = 3,
+  teamNames = ["קבוצה כתומה", "קבוצה סגולה", "קבוצה צהובה"],
+  requests: string[][] = []
+): Team[] {
+  let best: { teams: DraftedPlayer[][]; cost: number } | null = null;
+  for (let r = 0; r < RESTARTS; r++) {
+    const attempt = searchOnce(players, teamCount, requests);
+    if (!best || attempt.cost < best.cost) best = attempt;
+  }
+
+  return best!.teams.map((players, i) => ({
     name: teamNames[i] ?? `קבוצה ${i + 1}`,
     players,
     totals: sumStats(players),

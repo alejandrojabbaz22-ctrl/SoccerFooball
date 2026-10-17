@@ -6,20 +6,31 @@ import {
   fetchFixedPlayers,
   fetchLatestTeamDraw,
   fetchRegistrations,
+  fetchSpecialRequests,
+  addSpecialRequest,
+  removeSpecialRequest,
   registerFixedPlayer,
   registerGuest,
   removeRegistration,
   resetRegistrations,
   saveTeamDraw,
 } from "@/lib/queries";
-import { FixedPlayer, MAX_CONFIRMED, MAX_SLOTS, Registration } from "@/lib/types";
+import {
+  FixedPlayer,
+  MAX_CONFIRMED,
+  MAX_REQUEST_PLAYERS,
+  MAX_SLOTS,
+  MAX_SPECIAL_REQUESTS,
+  Registration,
+  SpecialRequest,
+} from "@/lib/types";
 import { buildBalancedTeams, Team } from "@/lib/teamBalancer";
 import { toErrorMessage } from "@/lib/errors";
 
 const GUEST_SCORES = [50, 60, 65, 70, 75, 80, 85, 90, 95, 100];
 const GUEST_POSITIONS = ["לא יודע", "הגנה", "קישור", "התקפה"];
 const MIN_PLAYERS_FOR_TEAMS = 3;
-const RESET_CODE = "gueta123";
+const ADMIN_CODE = "gueta123";
 
 export default function HomePage() {
   const [fixedPlayers, setFixedPlayers] = useState<FixedPlayer[]>([]);
@@ -36,17 +47,23 @@ export default function HomePage() {
   const [guestInvitedBy, setGuestInvitedBy] = useState("");
   const [pendingRemoval, setPendingRemoval] = useState<Registration | null>(null);
 
+  const [specialRequests, setSpecialRequests] = useState<SpecialRequest[]>([]);
+  const [requestPicks, setRequestPicks] = useState<string[]>(["", "", ""]);
+
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [listCopied, setListCopied] = useState(false);
 
   async function loadAll() {
-    const [players, regs, latestDraw] = await Promise.all([
+    const [players, regs, latestDraw, requests] = await Promise.all([
       fetchFixedPlayers(),
       fetchRegistrations(),
       fetchLatestTeamDraw(),
+      fetchSpecialRequests(),
     ]);
     setFixedPlayers(players);
     setRegistrations(regs);
+    setSpecialRequests(requests);
     if (latestDraw?.teams) setTeams(latestDraw.teams as Team[]);
     setLoading(false);
   }
@@ -132,7 +149,7 @@ export default function HomePage() {
   async function handleReset() {
     const code = prompt('להזנת קוד איפוס שבועי:');
     if (code === null) return; // cancelled
-    if (code !== RESET_CODE) {
+    if (code !== ADMIN_CODE) {
       setError("קוד שגוי");
       return;
     }
@@ -151,10 +168,29 @@ export default function HomePage() {
   }
 
   async function handleShuffle() {
+    const code = prompt('להזנת סיסמה ל"יאללה בלגן":');
+    if (code === null) return; // cancelled
+    if (code !== ADMIN_CODE) {
+      setError("סיסמה שגויה");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const newTeams = buildBalancedTeams(confirmed, 3);
+      // Re-read the latest list and requests so nothing added by others is missed.
+      const [freshRegs, freshRequests] = await Promise.all([
+        fetchRegistrations(),
+        fetchSpecialRequests(),
+      ]);
+      setRegistrations(freshRegs);
+      setSpecialRequests(freshRequests);
+      const freshConfirmed = freshRegs.filter((r) => r.status === "confirmed");
+      const newTeams = buildBalancedTeams(
+        freshConfirmed,
+        3,
+        undefined,
+        freshRequests.map((r) => r.players)
+      );
       setTeams(newTeams);
       setCopied(false);
       await saveTeamDraw(newTeams);
@@ -173,6 +209,58 @@ export default function HomePage() {
           team.players.map((p) => `• ${p.player_name}`).join("\n")
       )
       .join("\n\n");
+  }
+
+  function registrationsToText() {
+    const lines = [`רשומים לכדורגל (${confirmed.length}/${MAX_CONFIRMED}):`];
+    confirmed.forEach((r, i) => lines.push(`${i + 1}. ${r.player_name}`));
+    if (standby.length > 0) {
+      lines.push("", `רשימת המתנה (${standby.length}):`);
+      standby.forEach((r, i) => lines.push(`${confirmed.length + i + 1}. ${r.player_name}`));
+    }
+    return lines.join("\n");
+  }
+
+  async function handleCopyRegistrations() {
+    await navigator.clipboard.writeText(registrationsToText());
+    setListCopied(true);
+    setTimeout(() => setListCopied(false), 2000);
+  }
+
+  async function handleAddRequest() {
+    const picked = requestPicks.filter(Boolean);
+    if (new Set(picked).size !== picked.length) {
+      setError("אי אפשר לבחור את אותו שחקן פעמיים באותה בקשה");
+      return;
+    }
+    if (picked.length < 2) {
+      setError("בחר לפחות 2 שחקנים בבקשה");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await addSpecialRequest(picked);
+      setRequestPicks(["", "", ""]);
+      setSpecialRequests(await fetchSpecialRequests());
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveRequest(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeSpecialRequest(id);
+      setSpecialRequests(await fetchSpecialRequests());
+    } catch (e) {
+      setError(toErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleCopy() {
@@ -322,13 +410,22 @@ export default function HomePage() {
           <h2 className="text-lg font-bold">
             רשומים ({confirmed.length}/{MAX_CONFIRMED})
           </h2>
-          <button
-            onClick={handleReset}
-            disabled={busy}
-            className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-red-900 hover:text-red-200"
-          >
-            איפוס שבועי
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopyRegistrations}
+              disabled={registrations.length === 0}
+              className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {listCopied ? "הועתק! ✅" : "העתקת נרשמים"}
+            </button>
+            <button
+              onClick={handleReset}
+              disabled={busy}
+              className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-red-900 hover:text-red-200"
+            >
+              איפוס שבועי
+            </button>
+          </div>
         </div>
         <PlayerList items={confirmed} onRemove={setPendingRemoval} busy={busy} />
       </section>
@@ -341,6 +438,67 @@ export default function HomePage() {
           <PlayerList items={standby} onRemove={setPendingRemoval} busy={busy} standby />
         </section>
       )}
+
+      <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+        <h2 className="mb-1 text-lg font-bold">
+          בקשות מיוחדות ({specialRequests.length}/{MAX_SPECIAL_REQUESTS})
+        </h2>
+        <p className="mb-3 text-xs text-slate-400">
+          שחקנים שביקשו לשחק באותה קבוצה (עד {MAX_REQUEST_PLAYERS} שחקנים בבקשה). נלקח בחשבון
+          בחלוקה, בלי לוותר על האיזון.
+        </p>
+
+        {specialRequests.length > 0 && (
+          <ul className="mb-3 flex flex-col gap-2">
+            {specialRequests.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center justify-between rounded-md bg-slate-950 px-3 py-2 text-sm"
+              >
+                <span>{r.players.join(" + ")}</span>
+                <button
+                  onClick={() => handleRemoveRequest(r.id)}
+                  disabled={busy}
+                  className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                >
+                  הסר
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {specialRequests.length < MAX_SPECIAL_REQUESTS ? (
+          <div className="flex flex-wrap gap-2">
+            {requestPicks.map((pick, i) => (
+              <select
+                key={i}
+                value={pick}
+                onChange={(e) =>
+                  setRequestPicks((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))
+                }
+                className="min-w-[120px] flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="">{i < 2 ? "בחר שחקן..." : "שחקן שלישי (אופציונלי)"}</option>
+                {registrations.map((r) => (
+                  <option key={r.id} value={r.player_name}>
+                    {r.player_name}
+                  </option>
+                ))}
+              </select>
+            ))}
+            <button
+              onClick={handleAddRequest}
+              disabled={busy || requestPicks.filter(Boolean).length < 2}
+              className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              הוסף בקשה
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">הגעת למקסימום {MAX_SPECIAL_REQUESTS} בקשות מיוחדות.</p>
+        )}
+      </section>
 
       <section className="rounded-lg border border-slate-800 bg-slate-900 p-4">
         <h2 className="mb-3 text-lg font-bold">חלוקה לקבוצות</h2>

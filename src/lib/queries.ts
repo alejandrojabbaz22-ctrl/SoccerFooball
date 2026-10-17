@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { FixedPlayer, MAX_CONFIRMED, Registration } from "./types";
+import { FixedPlayer, MAX_CONFIRMED, Registration, SpecialRequest } from "./types";
 
 export async function fetchFixedPlayers(): Promise<FixedPlayer[]> {
   const { data, error } = await supabase
@@ -109,6 +109,12 @@ export async function resetRegistrations() {
     .not("id", "is", null);
   if (error) throw error;
 
+  const { error: requestsError } = await supabase
+    .from("special_requests")
+    .delete()
+    .not("id", "is", null);
+  if (requestsError) throw requestsError;
+
   // Clear the last team draw too, so a fresh week doesn't show last week's teams.
   const { error: teamDrawError } = await supabase
     .from("team_draws")
@@ -131,4 +137,23 @@ export async function fetchLatestTeamDraw() {
     .maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function fetchSpecialRequests(): Promise<SpecialRequest[]> {
+  const { data, error } = await supabase
+    .from("special_requests")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addSpecialRequest(players: string[]) {
+  const { error } = await supabase.from("special_requests").insert({ players });
+  if (error) throw error;
+}
+
+export async function removeSpecialRequest(id: string) {
+  const { error } = await supabase.from("special_requests").delete().eq("id", id);
+  if (error) throw error;
 }

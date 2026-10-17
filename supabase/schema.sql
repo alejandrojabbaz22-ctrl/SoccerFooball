@@ -43,11 +43,20 @@ create table if not exists team_draws (
   created_at timestamptz not null default now()
 );
 
+-- "Special requests": groups of 2-3 players who asked to play on the same team.
+-- Cleared out together with the registrations on the weekly reset.
+create table if not exists special_requests (
+  id uuid primary key default gen_random_uuid(),
+  players text[] not null check (array_length(players, 1) between 2 and 3),
+  created_at timestamptz not null default now()
+);
+
 -- Row Level Security: this app has no login, so every visitor uses the anon key.
 -- We open read/write to everyone on purpose (small trusted group of friends).
 alter table fixed_players enable row level security;
 alter table registrations enable row level security;
 alter table team_draws enable row level security;
+alter table special_requests enable row level security;
 
 drop policy if exists "public full access" on fixed_players;
 create policy "public full access" on fixed_players for all using (true) with check (true);
@@ -57,6 +66,9 @@ create policy "public full access" on registrations for all using (true) with ch
 
 drop policy if exists "public full access" on team_draws;
 create policy "public full access" on team_draws for all using (true) with check (true);
+
+drop policy if exists "public full access" on special_requests;
+create policy "public full access" on special_requests for all using (true) with check (true);
 
 -- Enable realtime updates for the registration list
 alter publication supabase_realtime add table registrations;
