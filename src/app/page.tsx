@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   fetchFixedPlayers,
@@ -31,6 +31,9 @@ const GUEST_SCORES = [50, 60, 65, 70, 75, 80, 85, 90, 95, 100];
 const GUEST_POSITIONS = ["לא יודע", "הגנה", "קישור", "התקפה"];
 const MIN_PLAYERS_FOR_TEAMS = 3;
 const ADMIN_CODE = "gueta123";
+const DRAW_HISTORY_SIZE = 6;
+
+const teamsToNames = (teams: Team[]) => teams.map((t) => t.players.map((p) => p.player_name));
 
 export default function HomePage() {
   const [fixedPlayers, setFixedPlayers] = useState<FixedPlayer[]>([]);
@@ -53,6 +56,8 @@ export default function HomePage() {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [copied, setCopied] = useState(false);
   const [listCopied, setListCopied] = useState(false);
+  // Earlier draws (most recent first), so the next shuffle avoids repeating the same pairs.
+  const drawHistory = useRef<string[][][]>([]);
 
   async function loadAll() {
     const [players, regs, latestDraw, requests] = await Promise.all([
@@ -64,7 +69,12 @@ export default function HomePage() {
     setFixedPlayers(players);
     setRegistrations(regs);
     setSpecialRequests(requests);
-    if (latestDraw?.teams) setTeams(latestDraw.teams as Team[]);
+    if (latestDraw?.teams) {
+      setTeams(latestDraw.teams as Team[]);
+      if (drawHistory.current.length === 0) {
+        drawHistory.current = [teamsToNames(latestDraw.teams as Team[])];
+      }
+    }
     setLoading(false);
   }
 
@@ -159,6 +169,7 @@ export default function HomePage() {
     try {
       await resetRegistrations();
       setTeams(null);
+      drawHistory.current = [];
       await loadAll();
     } catch (e) {
       setError(toErrorMessage(e));
@@ -189,8 +200,10 @@ export default function HomePage() {
         freshConfirmed,
         3,
         undefined,
-        freshRequests.map((r) => r.players)
+        freshRequests.map((r) => r.players),
+        drawHistory.current
       );
+      drawHistory.current = [teamsToNames(newTeams), ...drawHistory.current].slice(0, DRAW_HISTORY_SIZE);
       setTeams(newTeams);
       setCopied(false);
       await saveTeamDraw(newTeams);

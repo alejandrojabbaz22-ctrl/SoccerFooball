@@ -108,13 +108,42 @@ function requestPenalty(teams: DraftedPlayer[][], requests: string[][]): number 
   return penalty;
 }
 
+// Teams may differ by up to GAP_LIMIT points (best team average minus worst, per
+// stat) at no real cost, which leaves room for varied line-ups. Beyond that the
+// penalty grows fast. Inside the limit a small variance term still prefers
+// the more even split.
+const GAP_LIMIT = 5;
+const GAP_PENALTY_PER_POINT = 40;
+const BALANCE_SCALE = 0.3;
+
+const BALANCED_STATS: (keyof PlayerStats)[] = [
+  "defense",
+  "passing",
+  "attack",
+  "fitness",
+  "overall_score",
+];
+
+function gapPenalty(teams: DraftedPlayer[][]): number {
+  let penalty = 0;
+  for (const key of BALANCED_STATS) {
+    const averages = teams.map((t) => teamAverage(t, key));
+    const gap = Math.max(...averages) - Math.min(...averages);
+    if (gap > GAP_LIMIT) penalty += (gap - GAP_LIMIT) * GAP_PENALTY_PER_POINT;
+  }
+  return penalty;
+}
+
 function totalVariance(teams: DraftedPlayer[][], requests: string[][]): number {
-  return (
+  const variance =
     statVariance(teams, "overall_score") * 2 +
     statVariance(teams, "defense") +
     statVariance(teams, "passing") +
     statVariance(teams, "attack") +
-    statVariance(teams, "fitness") +
+    statVariance(teams, "fitness");
+  return (
+    variance * BALANCE_SCALE +
+    gapPenalty(teams) +
     tierPenalty(teams) +
     requestPenalty(teams, requests)
   );
@@ -147,16 +176,89 @@ function buildSlotOrder(sizes: number[]): number[] {
   return order;
 }
 
-const RESTARTS = 8;
-const ITERATIONS_PER_RESTART = 3000;
+const RESTARTS = 14;
+const ITERATIONS_PER_RESTART = 2500;
 const START_TEMPERATURE = 40;
 const END_TEMPERATURE = 0.3;
+
+// How strongly we steer away from pairs that were together in recent draws.
+// Each repeated pair costs this much; the most recent draw counts fully and
+// older ones count less (see HISTORY_DECAY).
+const NOVELTY_WEIGHT = 2;
+const HISTORY_DECAY = 0.7;
+// Any candidate close to the cheapest one may be picked, so the result is a
+// random good split rather than always the single best one. "Close" is a fixed
+// amount, or a share of the best cost when even the best split is far from
+// ideal (e.g. very few players registered, where nothing fits in the gap limit).
+const CANDIDATE_SLACK = 12;
+const CANDIDATE_SLACK_RATIO = 0.35;
+
+/**
+ * Pair-repeat penalty from previous draws. `avoid` is a list of earlier draws
+ * (most recent first); each draw is a list of teams, each team a list of names.
+ */
+function buildNoveltyMatrix(players: Registration[], avoid: string[][][]) {
+  const n = players.length;
+  const indexOf = new Map<Registration, number>();
+  players.forEach((p, i) => indexOf.set(p, i));
+  const byName = new Map<string, number>();
+  players.forEach((p, i) => byName.set(p.player_name, i));
+
+  const matrix = new Float64Array(n * n);
+  let weight = 1;
+  for (const draw of avoid) {
+    for (const team of draw) {
+      const ids = team
+        .map((name) => byName.get(name))
+        .filter((i): i is number => i !== undefined);
+      for (let a = 0; a < ids.length; a++) {
+        for (let b = a + 1; b < ids.length; b++) {
+          matrix[ids[a] * n + ids[b]] += weight;
+          matrix[ids[b] * n + ids[a]] += weight;
+        }
+      }
+    }
+    weight *= HISTORY_DECAY;
+  }
+  return { matrix, indexOf, n };
+}
+
+type Novelty = ReturnType<typeof buildNoveltyMatrix>;
+
+function noveltyPenalty(teams: DraftedPlayer[][], novelty: Novelty): number {
+  const { matrix, indexOf, n } = novelty;
+  let total = 0;
+  for (const team of teams) {
+    for (let a = 0; a < team.length; a++) {
+      const ia = indexOf.get(team[a])!;
+      for (let b = a + 1; b < team.length; b++) {
+        total += matrix[ia * n + indexOf.get(team[b])!];
+      }
+    }
+  }
+  return total * NOVELTY_WEIGHT;
+}
+
+type State = { teams: DraftedPlayer[][]; cost: number; rules: number };
+
+function partitionKey(teams: DraftedPlayer[][]): string {
+  return teams
+    .map((t) => t.map((p) => p.player_name).sort().join(","))
+    .sort()
+    .join("|");
+}
+
+// Share of the annealing run after which good states start being collected
+// (earlier on the search is still hot and wandering).
+const RECORD_FROM = 0.4;
 
 function searchOnce(
   players: Registration[],
   teamCount: number,
-  requests: string[][]
-): { teams: DraftedPlayer[][]; cost: number } {
+  requests: string[][],
+  novelty: Novelty,
+  visited: Map<string, State>
+): void {
   const jitter = 6; // small enough to keep strong players near the top, large enough to reshuffle ties and near-ties
   const sorted = [...players].sort(
     (a, b) => b.overall_score + Math.random() * jitter - (a.overall_score + Math.random() * jitter)
@@ -167,9 +269,24 @@ function searchOnce(
   const teams: DraftedPlayer[][] = Array.from({ length: teamCount }, () => []);
   sorted.forEach((player, i) => teams[slotOrder[i]].push(player));
 
+  const costOf = (t: DraftedPlayer[][]) =>
+    totalVariance(t, requests) + noveltyPenalty(t, novelty);
+  const remember = (t: DraftedPlayer[][], c: number) => {
+    const key = partitionKey(t);
+    if (!visited.has(key)) {
+      visited.set(key, {
+        teams: t.map((team) => [...team]),
+        cost: c,
+        rules: tierPenalty(t) + requestPenalty(t, requests),
+      });
+    }
+  };
+
   // Simulated annealing over pairwise swaps: early on it may accept slightly
   // worse swaps (to move a whole requested group), then it settles down.
-  let cost = totalVariance(teams, requests);
+  // Every good state visited late in the run is kept as a candidate, so the
+  // final pick has many near-equal splits to choose from, not just one.
+  let cost = costOf(teams);
   let bestCost = cost;
   let bestTeams = teams.map((t) => [...t]);
   for (let i = 0; i < ITERATIONS_PER_RESTART; i++) {
@@ -186,7 +303,7 @@ function searchOnce(
     teams[teamA][posA] = teams[teamB][posB];
     teams[teamB][posB] = tmp;
 
-    const newCost = totalVariance(teams, requests);
+    const newCost = costOf(teams);
     const delta = newCost - cost;
     if (delta < 0 || Math.random() < Math.exp(-delta / temperature)) {
       cost = newCost;
@@ -194,37 +311,56 @@ function searchOnce(
         bestCost = cost;
         bestTeams = teams.map((t) => [...t]);
       }
+      if (
+        i >= ITERATIONS_PER_RESTART * RECORD_FROM &&
+        cost <= bestCost + Math.max(CANDIDATE_SLACK, bestCost * CANDIDATE_SLACK_RATIO)
+      ) {
+        remember(teams, cost);
+      }
     } else {
       // revert the swap
       teams[teamB][posB] = teams[teamA][posA];
       teams[teamA][posA] = tmp;
     }
   }
-  return { teams: bestTeams, cost: bestCost };
+  remember(bestTeams, bestCost);
 }
 
 /**
  * Splits players into `teamCount` teams, as evenly sized as possible, and
  * balanced across all five stats, while honoring tier rules and special
  * requests as soft preferences.
- * Each restart snake-drafts by overall_score (with a touch of random jitter,
- * so re-running produces a different lineup each time) and then improves it
- * with randomized swaps. Single swaps cannot move a whole requested group at
- * once, so several restarts are run and the cheapest result is kept.
+ *
+ * To keep repeated presses of the shuffle button varied:
+ * - `avoid` lists previous draws (most recent first); pairs that already
+ *   shared a team there are discouraged.
+ * - several independent searches run, and the result is picked at random from
+ *   all candidates that are nearly as good as the best, not always the best.
  */
 export function buildBalancedTeams(
   players: Registration[],
   teamCount = 3,
   teamNames = ["קבוצה כתומה", "קבוצה סגולה", "קבוצה צהובה"],
-  requests: string[][] = []
+  requests: string[][] = [],
+  avoid: string[][][] = []
 ): Team[] {
-  let best: { teams: DraftedPlayer[][]; cost: number } | null = null;
-  for (let r = 0; r < RESTARTS; r++) {
-    const attempt = searchOnce(players, teamCount, requests);
-    if (!best || attempt.cost < best.cost) best = attempt;
-  }
+  const novelty = buildNoveltyMatrix(players, avoid);
 
-  return best!.teams.map((players, i) => ({
+  const visited = new Map<string, State>();
+  for (let r = 0; r < RESTARTS; r++) {
+    searchOnce(players, teamCount, requests, novelty, visited);
+  }
+  const candidates = [...visited.values()];
+  // Tier rules and special requests are never traded away for variety: only
+  // candidates that break them the least are considered.
+  const fewestBroken = Math.min(...candidates.map((c) => c.rules));
+  const respectful = candidates.filter((c) => c.rules === fewestBroken);
+  const bestCost = Math.min(...respectful.map((c) => c.cost));
+  const slack = Math.max(CANDIDATE_SLACK, bestCost * CANDIDATE_SLACK_RATIO);
+  const eligible = respectful.filter((c) => c.cost <= bestCost + slack);
+  const chosen = eligible[Math.floor(Math.random() * eligible.length)];
+
+  return chosen.teams.map((players, i) => ({
     name: teamNames[i] ?? `קבוצה ${i + 1}`,
     players,
     totals: sumStats(players),
